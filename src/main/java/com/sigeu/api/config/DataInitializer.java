@@ -10,27 +10,33 @@ import org.springframework.context.annotation.Configuration;
 public class DataInitializer {
 
     @Bean
-    CommandLineRunner initDatabase(UserRepository repository) {
+    CommandLineRunner initUsers(UserRepository repository) {
         return args -> {
+            // Solo creamos los usuarios si la base de datos está vacía
             if (repository.count() == 0) {
-                // Crear usuario Policía
-                User police = new User();
-                police.setUsername("admin_policia");
-                police.setPassword("12345");
-                police.setRole("POLICE");
-                police.setName("Comando Pasto");
-                repository.save(police);
 
-                // Crear un Ciudadano de prueba
-                User citizen = new User();
-                citizen.setUsername("dania");
-                citizen.setPassword("dania123");
-                citizen.setRole("CITIZEN");
-                citizen.setName("Dania");
-                repository.save(citizen);
+                // --- CIUDADANOS ---
+                repository.save(createUser("juan", "123", "CITIZEN", "Juan Pérez"));
+                repository.save(createUser("miguel", "123", "CITIZEN", "Miguel Ángel"));
+                repository.save(createUser("johan", "123", "CITIZEN", "Johan Guerrero"));
 
-                System.out.println("✅ Usuarios de prueba creados.");
+                // --- ENTIDADES ---
+                repository.save(createUser("policia_pasto", "pasto123", "POLICE", "Policía Nacional - Pasto"));
+                repository.save(createUser("bomberos_pasto", "fuego123", "FIREFIGHTERS", "Cuerpo de Bomberos"));
+                repository.save(createUser("hospital_pasto", "salud123", "HOSPITAL", "Hospital Universitario Departamental"));
+
+                System.out.println("✅ Usuarios para el proyecto final cargados con éxito.");
             }
         };
+    }
+
+    // Método auxiliar para no repetir código
+    private User createUser(String username, String password, String role, String name) {
+        User u = new User();
+        u.setUsername(username);
+        u.setPassword(password);
+        u.setRole(role);
+        u.setName(name);
+        return u;
     }
 }
