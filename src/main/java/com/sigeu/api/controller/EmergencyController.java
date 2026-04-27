@@ -3,14 +3,12 @@ package com.sigeu.api.controller;
 import com.sigeu.api.model.Emergency;
 import com.sigeu.api.service.EmergencyService;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/api/emergencies")
+@CrossOrigin(origins = "*")
 public class EmergencyController {
-
     private final EmergencyService service;
 
     public EmergencyController(EmergencyService service) {
@@ -18,7 +16,10 @@ public class EmergencyController {
     }
 
     @GetMapping
-    public List<Emergency> getAllEmergencies() {
+    public List<Emergency> getEmergencies(@RequestParam(required = false) String target) {
+        if (target != null) {
+            return service.getEmergenciesByEntity(target);
+        }
         return service.getAllEmergencies();
     }
 

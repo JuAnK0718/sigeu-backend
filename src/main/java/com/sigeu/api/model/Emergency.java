@@ -10,28 +10,19 @@ public class Emergency {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
     private String title;
-
     @Column(columnDefinition = "TEXT")
     private String description;
-
     private String location;
-
     private String type;
-
     private String status;
-
-    private String imageUrl;
-
+    private String targetEntity;
     private LocalDateTime createdAt;
 
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
-        if (this.status == null) {
-            this.status = "PENDING";
-        }
+        if (this.status == null) this.status = "PENDING";
     }
 
     public Long getId() { return id; }
@@ -46,8 +37,8 @@ public class Emergency {
     public void setType(String type) { this.type = type; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
-    public String getImageUrl() { return imageUrl; }
-    public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
+    public String getTargetEntity() { return targetEntity; }
+    public void setTargetEntity(String targetEntity) { this.targetEntity = targetEntity; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }
