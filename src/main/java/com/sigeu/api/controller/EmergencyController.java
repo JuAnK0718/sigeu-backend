@@ -1,7 +1,7 @@
 package com.sigeu.api.controller;
 
 import com.sigeu.api.model.Emergency;
-import com.sigeu.api.service.EmergencyService;
+import com.sigeu.api.repository.EmergencyRepository;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
@@ -9,22 +9,15 @@ import java.util.List;
 @RequestMapping("/api/emergencies")
 @CrossOrigin(origins = "*")
 public class EmergencyController {
-    private final EmergencyService service;
-
-    public EmergencyController(EmergencyService service) {
-        this.service = service;
-    }
+    private final EmergencyRepository repository;
+    public EmergencyController(EmergencyRepository repository) { this.repository = repository; }
 
     @GetMapping
-    public List<Emergency> getEmergencies(@RequestParam(required = false) String target) {
-        if (target != null) {
-            return service.getEmergenciesByEntity(target);
-        }
-        return service.getAllEmergencies();
+    public List<Emergency> get(@RequestParam(required = false) String target) {
+        if (target != null) return repository.findByTargetEntity(target);
+        return repository.findAll();
     }
 
     @PostMapping
-    public Emergency createEmergency(@RequestBody Emergency emergency) {
-        return service.createEmergency(emergency);
-    }
+    public Emergency create(@RequestBody Emergency e) { return repository.save(e); }
 }

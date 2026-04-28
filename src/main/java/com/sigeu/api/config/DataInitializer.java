@@ -8,35 +8,21 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class DataInitializer {
-
     @Bean
-    CommandLineRunner initUsers(UserRepository repository) {
+    CommandLineRunner init(UserRepository repo) {
         return args -> {
-            // Solo creamos los usuarios si la base de datos está vacía
-            if (repository.count() == 0) {
-
-                // --- CIUDADANOS ---
-                repository.save(createUser("juan", "123", "CITIZEN", "Juan Pérez"));
-                repository.save(createUser("miguel", "123", "CITIZEN", "Miguel Ángel"));
-                repository.save(createUser("johan", "123", "CITIZEN", "Johan Guerrero"));
-
-                // --- ENTIDADES ---
-                repository.save(createUser("policia_pasto", "pasto123", "POLICE", "Policía Nacional - Pasto"));
-                repository.save(createUser("bomberos_pasto", "fuego123", "FIREFIGHTERS", "Cuerpo de Bomberos"));
-                repository.save(createUser("hospital_pasto", "salud123", "HOSPITAL", "Hospital Universitario Departamental"));
-
-                System.out.println("✅ Usuarios para el proyecto final cargados con éxito.");
-            }
+            repo.deleteAll();
+            repo.save(create("juan", "123", "CITIZEN", "Juan Pérez"));
+            repo.save(create("miguel", "123", "CITIZEN", "Miguel Ángel"));
+            repo.save(create("johan", "123", "CITIZEN", "Johan Guerrero"));
+            repo.save(create("policia_pasto", "pasto123", "POLICE", "Policía Nacional"));
+            repo.save(create("bomberos_pasto", "fuego123", "FIREFIGHTERS", "Cuerpo de Bomberos"));
+            repo.save(create("hospital_pasto", "salud123", "HOSPITAL", "Hospital Universitario"));
         };
     }
-
-    // Método auxiliar para no repetir código
-    private User createUser(String username, String password, String role, String name) {
-        User u = new User();
-        u.setUsername(username);
-        u.setPassword(password);
-        u.setRole(role);
-        u.setName(name);
-        return u;
+    private User create(String u, String p, String r, String n) {
+        User user = new User();
+        user.setUsername(u); user.setPassword(p); user.setRole(r); user.setName(n);
+        return user;
     }
 }
