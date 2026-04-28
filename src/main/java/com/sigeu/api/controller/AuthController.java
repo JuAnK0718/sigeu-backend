@@ -2,6 +2,7 @@ package com.sigeu.api.controller;
 
 import com.sigeu.api.model.User;
 import com.sigeu.api.repository.UserRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
@@ -12,19 +13,23 @@ import java.util.Optional;
 @CrossOrigin(origins = "*")
 public class AuthController {
     private final UserRepository repository;
-    public AuthController(UserRepository repository) { this.repository = repository; }
+
+    public AuthController(UserRepository repository) {
+        this.repository = repository;
+    }
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> credentials) {
         Optional<User> user = repository.findByUsername(credentials.get("username"));
-        if (user.isPresent() && user.get().getPassword().equals(credentials.get("password"))) {
-            return ResponseEntity.ok(user.get());
-        }
-        return ResponseEntity.status(401).body("Error");
-    }
 
-    @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody User user) {
-        return ResponseEntity.ok(repository.save(user));
+        if (!user.isPresent()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Nombre de usuario no encontrado");
+        }
+
+        if (!user.get().getPassword().equals(credentials.get("password"))) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Contraseña incorrecta");
+        }
+
+        return ResponseEntity.ok(user.get());
     }
 }
