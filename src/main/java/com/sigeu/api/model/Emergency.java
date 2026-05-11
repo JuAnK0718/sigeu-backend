@@ -21,7 +21,7 @@ public class Emergency {
     private String targetEntity;
 
     // AQUÍ ESTÁ LA NUEVA COLUMNA PARA LA FOTO
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(columnDefinition = "TEXT")
     private String image;
 
     private LocalDateTime createdAt;
