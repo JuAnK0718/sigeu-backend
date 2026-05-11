@@ -15,7 +15,7 @@ public class DataInitializer {
             repo.save(create("juan", "123", "CITIZEN", "Juan Pérez"));
             repo.save(create("miguel", "123", "CITIZEN", "Miguel Ángel"));
             repo.save(create("johan", "123", "CITIZEN", "Johan Guerrero"));
-            repo.save(create("policia_pasto", "pasto123", "Policia", "Policía Nacional"));
+            repo.save(create("policia_pasto", "pasto123", "POLICIA", "Policía Nacional"));
             repo.save(create("bomberos_pasto", "fuego123", "Bomberos", "Cuerpo de Bomberos"));
             repo.save(create("hospital_pasto", "salud123", "Hospital", "Hospital Universitario"));
         };
