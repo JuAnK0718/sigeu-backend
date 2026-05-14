@@ -32,4 +32,40 @@ public class AuthController {
 
         return ResponseEntity.ok(user.get());
     }
+
+    // --- MÉTODOS NUEVOS (AHORA SÍ DENTRO DE LA CLASE) ---
+
+    @PostMapping("/register")
+    public ResponseEntity<?> registerUser(@RequestBody User newUser) {
+        try {
+            // 1. Verificamos de verdad si el usuario ya existe en tu BD
+            Optional<User> existingUser = repository.findByUsername(newUser.getUsername());
+            if (existingUser.isPresent()) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body("Este nombre de usuario ya está en uso");
+            }
+
+            // 2. Si no existe, lo guardamos en la base de datos real
+            repository.save(newUser);
+            return ResponseEntity.ok().body("Usuario creado exitosamente");
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error interno al crear el usuario.");
+        }
+    }
+
+    @PostMapping("/recover")
+    public ResponseEntity<?> recoverPassword(@RequestBody Map<String, String> request) {
+        String username = request.get("username");
+
+        // 1. Buscamos de verdad en tu BD si el usuario existe
+        Optional<User> user = repository.findByUsername(username);
+
+        if (user.isPresent()) {
+            // Si el usuario existe, se manda el OK. (En un sistema futuro aquí iría el envío de email)
+            return ResponseEntity.ok().body("Instrucciones de recuperación enviadas");
+        } else {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Usuario no encontrado en el sistema");
+        }
+    }
+
 }
