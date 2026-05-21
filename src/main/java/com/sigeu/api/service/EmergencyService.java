@@ -14,11 +14,11 @@ public class EmergencyService {
     }
 
     public List<Emergency> getAllEmergencies() {
-        return repository.findAll();
+        return repository.findAllByOrderByCreatedAtDesc();
     }
 
     public List<Emergency> getEmergenciesByEntity(String entity) {
-        return repository.findByTargetEntity(entity);
+        return repository.findByTargetEntityOrderByCreatedAtDesc(entity);
     }
 
     public Emergency createEmergency(Emergency emergency) {

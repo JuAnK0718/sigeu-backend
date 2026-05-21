@@ -1,5 +1,7 @@
 package com.sigeu.api.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 
 @Entity
@@ -11,9 +13,11 @@ public class User {
     @Column(unique = true, nullable = false)
     private String username;
     @Column(nullable = false)
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
     @Column(nullable = false)
     private String role;
+    @JsonAlias("fullName")
     private String name;
 
     public Long getId() { return id; }

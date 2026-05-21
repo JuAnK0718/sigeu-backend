@@ -2,6 +2,7 @@ package com.sigeu.api.model;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "emergencies")
@@ -20,7 +21,7 @@ public class Emergency {
     private String status;
     private String targetEntity;
 
-    // AQUÍ ESTÁ LA NUEVA COLUMNA PARA LA FOTO
+    // Evidencia visual enviada desde el frontend.
     @Column(columnDefinition = "TEXT")
     private String image;
 
@@ -28,8 +29,8 @@ public class Emergency {
 
     @PrePersist
     protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
-        if (this.status == null) this.status = "PENDING";
+        this.createdAt = LocalDateTime.now(ZoneOffset.UTC);
+        if (this.status == null || this.status.isBlank()) this.status = "PENDING";
     }
 
     public Long getId() { return id; }
@@ -56,7 +57,6 @@ public class Emergency {
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 
-    // NUEVOS GETTERS Y SETTERS PARA LA FOTO
     public String getImage() { return image; }
     public void setImage(String image) { this.image = image; }
 }
