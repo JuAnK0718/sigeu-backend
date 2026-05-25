@@ -1,7 +1,10 @@
 package com.sigeu.api.controller;
 
+import com.sigeu.api.dto.AuthResponse;
 import com.sigeu.api.model.User;
 import com.sigeu.api.repository.UserRepository;
+import com.sigeu.api.security.JwtService;
+import com.sigeu.api.validation.InputRules;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -20,9 +23,11 @@ import java.util.Set;
 public class AuthController {
     private static final Set<String> VALID_ROLES = Set.of("CITIZEN", "POLICIA", "BOMBEROS", "HOSPITAL");
     private final UserRepository repository;
+    private final JwtService jwtService;
 
-    public AuthController(UserRepository repository) {
+    public AuthController(UserRepository repository, JwtService jwtService) {
         this.repository = repository;
+        this.jwtService = jwtService;
     }
 
     @PostMapping("/login")
@@ -44,7 +49,8 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Password incorrecto");
         }
 
-        return ResponseEntity.ok(user.get());
+        User authenticatedUser = user.get();
+        return ResponseEntity.ok(new AuthResponse(authenticatedUser, jwtService.generateToken(authenticatedUser)));
     }
 
     @PostMapping("/register")
@@ -53,9 +59,19 @@ public class AuthController {
             String username = normalizeUsername(newUser.getUsername());
             String password = newUser.getPassword();
             String role = normalizeRole(newUser.getRole());
+            String name = InputRules.clean(newUser.getName());
 
             if (username == null || password == null || password.isBlank() || role == null) {
                 return ResponseEntity.badRequest().body("Usuario, password y rol son obligatorios");
+            }
+            if (!InputRules.validUsername(username)) {
+                return ResponseEntity.badRequest().body("Usuario no valido. Usa 4-30 caracteres: minusculas, numeros o guion bajo");
+            }
+            if (!InputRules.validPassword(password)) {
+                return ResponseEntity.badRequest().body("Password no valido. Usa 8-72 caracteres, al menos una mayuscula y solo @ # _ . -");
+            }
+            if (InputRules.exceeds(name, InputRules.NAME_MAX)) {
+                return ResponseEntity.badRequest().body("Nombre demasiado largo");
             }
             if (!VALID_ROLES.contains(role)) {
                 return ResponseEntity.badRequest().body("Rol no permitido");
@@ -66,6 +82,7 @@ public class AuthController {
 
             newUser.setUsername(username);
             newUser.setRole(role);
+            newUser.setName(name);
             repository.save(newUser);
             return ResponseEntity.ok().body("Usuario creado exitosamente");
 

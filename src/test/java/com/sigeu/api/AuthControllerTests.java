@@ -36,7 +36,7 @@ class AuthControllerTests {
                 .content("""
                         {
                           "username": "Operador_01",
-                          "password": "abc123",
+                          "password": "Abc12345",
                           "role": "policia",
                           "fullName": "Unidad Norte"
                         }
@@ -58,7 +58,7 @@ class AuthControllerTests {
                 .content("""
                         {
                           "username": "juan",
-                          "password": "123",
+                          "password": "Abc12345",
                           "role": "CITIZEN",
                           "name": "Juan"
                         }
@@ -70,12 +70,28 @@ class AuthControllerTests {
                 .content("""
                         {
                           "username": "JUAN",
-                          "password": "123"
+                          "password": "Abc12345"
                         }
                         """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("juan"))
                 .andExpect(jsonPath("$.role").value("CITIZEN"))
+                .andExpect(jsonPath("$.token").isNotEmpty())
                 .andExpect(jsonPath("$.password").doesNotExist());
+    }
+
+    @Test
+    void registerRejectsInvalidPassword() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "username": "juan",
+                          "password": "123",
+                          "role": "CITIZEN",
+                          "name": "Juan"
+                        }
+                        """))
+                .andExpect(status().isBadRequest());
     }
 }

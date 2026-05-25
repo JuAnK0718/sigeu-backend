@@ -2,6 +2,7 @@ package com.sigeu.api.controller;
 
 import com.sigeu.api.model.Emergency;
 import com.sigeu.api.repository.EmergencyRepository;
+import com.sigeu.api.validation.InputRules;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -39,8 +40,28 @@ public class EmergencyController {
 
     @PostMapping
     public ResponseEntity<?> create(@RequestBody Emergency emergency) {
-        if (isBlank(emergency.getTitle()) || isBlank(emergency.getDescription()) || isBlank(emergency.getLocation())) {
+        String title = InputRules.clean(emergency.getTitle());
+        String description = InputRules.clean(emergency.getDescription());
+        String location = InputRules.clean(emergency.getLocation());
+        String type = InputRules.clean(emergency.getType());
+
+        if (InputRules.isBlank(title) || InputRules.isBlank(description) || InputRules.isBlank(location)) {
             return ResponseEntity.badRequest().body("Titulo, descripcion y ubicacion son obligatorios");
+        }
+        if (InputRules.exceeds(title, InputRules.TITLE_MAX)) {
+            return ResponseEntity.badRequest().body("Titulo demasiado largo");
+        }
+        if (InputRules.exceeds(description, InputRules.DESCRIPTION_MAX)) {
+            return ResponseEntity.badRequest().body("Descripcion demasiado larga");
+        }
+        if (InputRules.exceeds(location, InputRules.LOCATION_MAX)) {
+            return ResponseEntity.badRequest().body("Ubicacion demasiado larga");
+        }
+        if (InputRules.exceeds(type, InputRules.TYPE_MAX)) {
+            return ResponseEntity.badRequest().body("Tipo demasiado largo");
+        }
+        if (InputRules.exceeds(emergency.getImage(), InputRules.IMAGE_MAX)) {
+            return ResponseEntity.badRequest().body("Imagen demasiado grande");
         }
 
         String target = normalize(emergency.getTargetEntity());
@@ -48,8 +69,12 @@ public class EmergencyController {
             return ResponseEntity.badRequest().body("Entidad destino no valida");
         }
 
+        emergency.setTitle(title);
+        emergency.setDescription(description);
+        emergency.setLocation(location);
+        emergency.setType(type);
         emergency.setTargetEntity(target);
-        if (!isBlank(emergency.getStatus())) {
+        if (!InputRules.isBlank(emergency.getStatus())) {
             String status = normalize(emergency.getStatus());
             if (!VALID_STATUSES.contains(status)) {
                 return ResponseEntity.badRequest().body("Estado no valido");
@@ -84,9 +109,5 @@ public class EmergencyController {
     private String normalize(String value) {
         if (value == null || value.isBlank()) return null;
         return value.trim().toUpperCase();
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.isBlank();
     }
 }

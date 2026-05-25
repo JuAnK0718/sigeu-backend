@@ -76,6 +76,22 @@ class EmergencyControllerTests {
                 .andExpect(jsonPath("$.status").value("RESOLVED"));
     }
 
+    @Test
+    void createEmergencyRejectsTooLongTitle() throws Exception {
+        mockMvc.perform(post("/api/emergencies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "title": "%s",
+                          "description": "Choque con heridos",
+                          "location": "1.2136, -77.2811",
+                          "type": "ACCIDENT",
+                          "targetEntity": "POLICIA"
+                        }
+                        """.formatted("A".repeat(121))))
+                .andExpect(status().isBadRequest());
+    }
+
     private com.sigeu.api.model.Emergency newEmergency() {
         var emergency = new com.sigeu.api.model.Emergency();
         emergency.setTitle("Alerta medica");
