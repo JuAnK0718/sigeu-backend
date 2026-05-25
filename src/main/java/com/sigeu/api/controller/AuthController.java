@@ -4,6 +4,7 @@ import com.sigeu.api.dto.AuthResponse;
 import com.sigeu.api.model.User;
 import com.sigeu.api.repository.UserRepository;
 import com.sigeu.api.security.JwtService;
+import com.sigeu.api.security.PasswordService;
 import com.sigeu.api.validation.InputRules;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,10 +25,12 @@ public class AuthController {
     private static final Set<String> VALID_ROLES = Set.of("CITIZEN", "POLICIA", "BOMBEROS", "HOSPITAL");
     private final UserRepository repository;
     private final JwtService jwtService;
+    private final PasswordService passwordService;
 
-    public AuthController(UserRepository repository, JwtService jwtService) {
+    public AuthController(UserRepository repository, JwtService jwtService, PasswordService passwordService) {
         this.repository = repository;
         this.jwtService = jwtService;
+        this.passwordService = passwordService;
     }
 
     @PostMapping("/login")
@@ -38,6 +41,9 @@ public class AuthController {
         if (username == null || password == null || password.isBlank()) {
             return ResponseEntity.badRequest().body("Usuario y password son obligatorios");
         }
+        if (!InputRules.validUsername(username) || InputRules.exceeds(password, InputRules.PASSWORD_MAX)) {
+            return ResponseEntity.badRequest().body("Datos de acceso no validos");
+        }
 
         Optional<User> user = repository.findByUsername(username);
 
@@ -45,11 +51,16 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Nombre de usuario no encontrado");
         }
 
-        if (!user.get().getPassword().equals(password)) {
+        User authenticatedUser = user.get();
+        if (!passwordService.matches(password, authenticatedUser.getPassword())) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Password incorrecto");
         }
 
-        User authenticatedUser = user.get();
+        if (passwordService.needsHashUpgrade(authenticatedUser.getPassword())) {
+            authenticatedUser.setPassword(passwordService.hash(password));
+            repository.save(authenticatedUser);
+        }
+
         return ResponseEntity.ok(new AuthResponse(authenticatedUser, jwtService.generateToken(authenticatedUser)));
     }
 
@@ -81,6 +92,7 @@ public class AuthController {
             }
 
             newUser.setUsername(username);
+            newUser.setPassword(passwordService.hash(password));
             newUser.setRole(role);
             newUser.setName(name);
             repository.save(newUser);

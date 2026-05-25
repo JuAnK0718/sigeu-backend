@@ -1,5 +1,6 @@
 package com.sigeu.api;
 
+import com.sigeu.api.model.User;
 import com.sigeu.api.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,6 +50,8 @@ class AuthControllerTests {
         assertThat(savedUser).isPresent();
         assertThat(savedUser.get().getRole()).isEqualTo("POLICIA");
         assertThat(savedUser.get().getName()).isEqualTo("Unidad Norte");
+        assertThat(savedUser.get().getPassword()).isNotEqualTo("Abc12345");
+        assertThat(savedUser.get().getPassword()).startsWith("$2");
     }
 
     @Test
@@ -93,5 +96,31 @@ class AuthControllerTests {
                         }
                         """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void loginUpgradesLegacyPlainTextPassword() throws Exception {
+        User legacyUser = new User();
+        legacyUser.setUsername("legacy");
+        legacyUser.setPassword("Abc12345");
+        legacyUser.setRole("CITIZEN");
+        legacyUser.setName("Legacy User");
+        userRepository.save(legacyUser);
+
+        mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "username": "legacy",
+                          "password": "Abc12345"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isNotEmpty());
+
+        var upgradedUser = userRepository.findByUsername("legacy");
+        assertThat(upgradedUser).isPresent();
+        assertThat(upgradedUser.get().getPassword()).isNotEqualTo("Abc12345");
+        assertThat(upgradedUser.get().getPassword()).startsWith("$2");
     }
 }
