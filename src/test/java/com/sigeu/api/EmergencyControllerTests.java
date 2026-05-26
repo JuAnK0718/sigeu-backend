@@ -125,6 +125,44 @@ class EmergencyControllerTests {
     }
 
     @Test
+    void createMedicalEmergencyUsesOneAmbulanceForSingleUnconsciousPerson() throws Exception {
+        mockMvc.perform(post("/api/emergencies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "title": "Persona inconsciente",
+                          "description": "Joven sin respuesta en un sofa. Se necesita HOSPITAL.",
+                          "location": "1.2136, -77.2811",
+                          "type": "MEDICAL",
+                          "targetEntity": "HOSPITAL"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.assignedUnits").value(1))
+                .andExpect(jsonPath("$.resourceLabel").value("ambulancias"));
+    }
+
+    @Test
+    void createMedicalEmergencyUsesMoreAmbulancesForMultipleInjuredPeople() throws Exception {
+        mockMvc.perform(post("/api/emergencies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "title": "Accidente con varios heridos",
+                          "description": "Choque multiple con varias personas heridas y lesionados.",
+                          "location": "1.2136, -77.2811",
+                          "type": "MEDICAL",
+                          "targetEntity": "HOSPITAL"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.assignedUnits").value(4))
+                .andExpect(jsonPath("$.resourceLabel").value("ambulancias"));
+    }
+
+    @Test
     void createEmergencyRejectsTooLongTitle() throws Exception {
         mockMvc.perform(post("/api/emergencies")
                 .contentType(MediaType.APPLICATION_JSON)

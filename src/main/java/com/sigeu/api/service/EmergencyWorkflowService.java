@@ -191,7 +191,7 @@ public class EmergencyWorkflowService {
         String target = emergency.getTargetEntity();
         ResourcePool pool = pools.getOrDefault(target, pools.get("POLICIA"));
         String text = (emergency.getTitle() + " " + emergency.getDescription() + " " + emergency.getType()).toLowerCase(Locale.ROOT);
-        boolean high = containsAny(text, "incendio", "fuego", "llamas", "explosion", "grave", "herido", "arma", "disparo", "violencia", "urgente", "inmediato");
+        boolean high = containsAny(text, "incendio", "fuego", "llamas", "explosion", "grave", "herido", "arma", "disparo", "violencia", "urgente", "inmediato", "inconsciente", "sin respuesta", "no responde");
 
         int units = switch (target) {
             case "BOMBEROS" -> fireTruckUnits(text);
@@ -217,8 +217,15 @@ public class EmergencyWorkflowService {
 
     private int ambulanceUnits(String text) {
         int units = 1;
-        if (containsAny(text, "herido", "heridos", "sangre", "ambulancia")) units += 1;
-        if (containsAny(text, "grave", "inconsciente", "multiples", "varios")) units += 2;
+        if (containsAny(text, "dos heridos", "2 heridos", "dos personas", "2 personas", "dos lesionados", "2 lesionados")) {
+            units = 2;
+        }
+        if (containsAny(text, "varios heridos", "varias personas", "personas heridas", "multiples heridos", "múltiples heridos", "muchos heridos", "muchas personas", "victimas", "víctimas", "lesionados", "accidentados")) {
+            units = 3;
+        }
+        if (containsAny(text, "mas de 3", "más de 3", "multitud", "bus", "choque multiple", "choque múltiple", "derrumbe", "colapso")) {
+            units = Math.max(units, 4);
+        }
         return units;
     }
 
