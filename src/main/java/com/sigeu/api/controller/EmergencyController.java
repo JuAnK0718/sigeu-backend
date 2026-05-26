@@ -1,7 +1,9 @@
 package com.sigeu.api.controller;
 
+import com.sigeu.api.dto.ResourceSummary;
 import com.sigeu.api.model.Emergency;
 import com.sigeu.api.repository.EmergencyRepository;
+import com.sigeu.api.service.EmergencyWorkflowService;
 import com.sigeu.api.validation.InputRules;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -24,18 +26,31 @@ import java.util.Set;
 @CrossOrigin(origins = "*")
 public class EmergencyController {
     private static final Set<String> VALID_TARGETS = Set.of("POLICIA", "BOMBEROS", "HOSPITAL");
-    private static final Set<String> VALID_STATUSES = Set.of("PENDING", "IN_PROGRESS", "RESOLVED");
+    private static final Set<String> VALID_STATUSES = Set.of("PENDING", "WAITING", "IN_PROGRESS", "RESOLVED");
     private final EmergencyRepository repository;
+    private final EmergencyWorkflowService workflowService;
 
-    public EmergencyController(EmergencyRepository repository) {
+    public EmergencyController(EmergencyRepository repository, EmergencyWorkflowService workflowService) {
         this.repository = repository;
+        this.workflowService = workflowService;
     }
 
     @GetMapping
     public List<Emergency> get(@RequestParam(required = false) String target) {
+        workflowService.runAutomationCycle();
         String normalizedTarget = normalize(target);
         if (normalizedTarget != null) return repository.findByTargetEntityOrderByCreatedAtDesc(normalizedTarget);
         return repository.findAllByOrderByCreatedAtDesc();
+    }
+
+    @GetMapping("/resources")
+    public ResponseEntity<?> resources(@RequestParam String target) {
+        String normalizedTarget = normalize(target);
+        if (normalizedTarget == null || !VALID_TARGETS.contains(normalizedTarget)) {
+            return ResponseEntity.badRequest().body("Entidad destino no valida");
+        }
+        ResourceSummary summary = workflowService.resourcesFor(normalizedTarget);
+        return summary == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(summary);
     }
 
     @PostMapping
@@ -82,7 +97,7 @@ public class EmergencyController {
             emergency.setStatus(status);
         }
 
-        return ResponseEntity.ok(repository.save(emergency));
+        return ResponseEntity.ok(workflowService.saveAndPlan(emergency));
     }
 
     @PutMapping("/{id}/status")
@@ -92,10 +107,9 @@ public class EmergencyController {
             return ResponseEntity.badRequest().body("Estado no valido");
         }
 
-        return repository.findById(id).map(emergency -> {
-            emergency.setStatus(status);
-            return ResponseEntity.ok(repository.save(emergency));
-        }).orElse(ResponseEntity.notFound().build());
+        return workflowService.updateStatus(id, status)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{id}")

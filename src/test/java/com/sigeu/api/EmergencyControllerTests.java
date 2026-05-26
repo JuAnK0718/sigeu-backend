@@ -30,7 +30,7 @@ class EmergencyControllerTests {
     }
 
     @Test
-    void createEmergencyNormalizesTargetAndDefaultsStatus() throws Exception {
+    void createEmergencyNormalizesTargetAndAssignsResources() throws Exception {
         mockMvc.perform(post("/api/emergencies")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -44,12 +44,21 @@ class EmergencyControllerTests {
                         """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.targetEntity").value("POLICIA"))
-                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.assignedUnits").isNumber())
+                .andExpect(jsonPath("$.resourceLabel").value("policias"))
+                .andExpect(jsonPath("$.autoResolveAt").exists())
                 .andExpect(jsonPath("$.createdAt").exists());
 
         mockMvc.perform(get("/api/emergencies").param("target", "policia"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].targetEntity").value("POLICIA"));
+
+        mockMvc.perform(get("/api/emergencies/resources").param("target", "policia"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalUnits").value(30))
+                .andExpect(jsonPath("$.usedUnits").isNumber())
+                .andExpect(jsonPath("$.availableUnits").isNumber());
     }
 
     @Test
@@ -74,6 +83,45 @@ class EmergencyControllerTests {
                         """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("RESOLVED"));
+    }
+
+    @Test
+    void createEmergencyWaitsWhenResourcesAreFull() throws Exception {
+        String incident = """
+                {
+                  "title": "Incendio grande",
+                  "description": "Casa en llamas con humo y explosion",
+                  "location": "1.2136, -77.2811",
+                  "type": "FIRE",
+                  "targetEntity": "BOMBEROS"
+                }
+                """;
+
+        mockMvc.perform(post("/api/emergencies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(incident))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.assignedUnits").value(4));
+
+        mockMvc.perform(post("/api/emergencies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(incident))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.assignedUnits").value(4));
+
+        mockMvc.perform(post("/api/emergencies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(incident))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("WAITING"));
+
+        mockMvc.perform(get("/api/emergencies/resources").param("target", "BOMBEROS"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalUnits").value(8))
+                .andExpect(jsonPath("$.usedUnits").value(8))
+                .andExpect(jsonPath("$.waitingIncidents").value(1));
     }
 
     @Test
