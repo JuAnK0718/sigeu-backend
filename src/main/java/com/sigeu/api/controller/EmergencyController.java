@@ -3,8 +3,11 @@ package com.sigeu.api.controller;
 import com.sigeu.api.dto.ResourceSummary;
 import com.sigeu.api.model.Emergency;
 import com.sigeu.api.repository.EmergencyRepository;
+import com.sigeu.api.security.AuthTokenFilter;
+import com.sigeu.api.security.JwtService;
 import com.sigeu.api.service.EmergencyWorkflowService;
 import com.sigeu.api.validation.InputRules;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -36,21 +39,42 @@ public class EmergencyController {
     }
 
     @GetMapping
-    public List<Emergency> get(@RequestParam(required = false) String target) {
-        workflowService.runAutomationCycle();
+    public List<Emergency> get(@RequestParam(required = false) String target, HttpServletRequest request) {
         String normalizedTarget = normalize(target);
+        JwtService.AuthenticatedUser actor = authUser(request);
+        workflowService.runAutomationCycleFor(normalizedTarget, actor);
+        if (normalizedTarget != null && actor != null && normalizedTarget.equals(actor.role())) {
+            return repository.findVisibleForOperator(normalizedTarget, actor.username());
+        }
         if (normalizedTarget != null) return repository.findByTargetEntityOrderByCreatedAtDesc(normalizedTarget);
         return repository.findAllByOrderByCreatedAtDesc();
     }
 
     @GetMapping("/resources")
-    public ResponseEntity<?> resources(@RequestParam String target) {
+    public ResponseEntity<?> resources(@RequestParam String target, HttpServletRequest request) {
         String normalizedTarget = normalize(target);
         if (normalizedTarget == null || !VALID_TARGETS.contains(normalizedTarget)) {
             return ResponseEntity.badRequest().body("Entidad destino no valida");
         }
-        ResourceSummary summary = workflowService.resourcesFor(normalizedTarget);
+        ResourceSummary summary = workflowService.resourcesFor(normalizedTarget, authUser(request));
         return summary == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(summary);
+    }
+
+    @PostMapping("/resources/add")
+    public ResponseEntity<?> addResources(@RequestBody Map<String, String> body, HttpServletRequest request) {
+        String target = normalize(body.get("target"));
+        if (target == null || !VALID_TARGETS.contains(target)) {
+            return ResponseEntity.badRequest().body("Entidad destino no valida");
+        }
+
+        try {
+            int units = Integer.parseInt(body.getOrDefault("units", "0"));
+            return ResponseEntity.ok(workflowService.addResources(target, authUser(request), units));
+        } catch (NumberFormatException ex) {
+            return ResponseEntity.badRequest().body("Cantidad no valida");
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage());
+        }
     }
 
     @PostMapping
@@ -101,13 +125,13 @@ public class EmergencyController {
     }
 
     @PutMapping("/{id}/status")
-    public ResponseEntity<?> updateStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
+    public ResponseEntity<?> updateStatus(@PathVariable Long id, @RequestBody Map<String, String> body, HttpServletRequest request) {
         String status = normalize(body.get("status"));
         if (status == null || !VALID_STATUSES.contains(status)) {
             return ResponseEntity.badRequest().body("Estado no valido");
         }
 
-        return workflowService.updateStatus(id, status)
+        return workflowService.updateStatus(id, status, authUser(request))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -123,5 +147,13 @@ public class EmergencyController {
     private String normalize(String value) {
         if (value == null || value.isBlank()) return null;
         return value.trim().toUpperCase();
+    }
+
+    private JwtService.AuthenticatedUser authUser(HttpServletRequest request) {
+        Object attribute = request.getAttribute(AuthTokenFilter.AUTH_USER_ATTRIBUTE);
+        if (attribute instanceof JwtService.AuthenticatedUser authenticatedUser) {
+            return authenticatedUser;
+        }
+        return null;
     }
 }

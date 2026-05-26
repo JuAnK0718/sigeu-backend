@@ -1,6 +1,8 @@
 package com.sigeu.api;
 
+import com.sigeu.api.model.User;
 import com.sigeu.api.repository.EmergencyRepository;
+import com.sigeu.api.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +26,9 @@ class EmergencyControllerTests {
     @Autowired
     private EmergencyRepository emergencyRepository;
 
+    @Autowired
+    private JwtService jwtService;
+
     @BeforeEach
     void cleanDatabase() {
         emergencyRepository.deleteAll();
@@ -44,19 +49,33 @@ class EmergencyControllerTests {
                         """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.targetEntity").value("POLICIA"))
-                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.assignedUnits").isNumber())
                 .andExpect(jsonPath("$.resourceLabel").value("policias"))
-                .andExpect(jsonPath("$.autoResolveAt").exists())
                 .andExpect(jsonPath("$.createdAt").exists());
 
-        mockMvc.perform(get("/api/emergencies").param("target", "policia"))
+        mockMvc.perform(post("/api/emergencies/resources/add")
+                .header("Authorization", authHeader("POLICIA", "pol_central"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "target": "POLICIA",
+                          "units": "5"
+                        }
+                        """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].targetEntity").value("POLICIA"));
+                .andExpect(jsonPath("$.totalUnits").value(5));
 
-        mockMvc.perform(get("/api/emergencies/resources").param("target", "policia"))
+        mockMvc.perform(get("/api/emergencies").param("target", "policia")
+                .header("Authorization", authHeader("POLICIA", "pol_central")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalUnits").value(30))
+                .andExpect(jsonPath("$[0].targetEntity").value("POLICIA"))
+                .andExpect(jsonPath("$[0].status").value("IN_PROGRESS"));
+
+        mockMvc.perform(get("/api/emergencies/resources").param("target", "policia")
+                .header("Authorization", authHeader("POLICIA", "pol_central")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalUnits").value(5))
                 .andExpect(jsonPath("$.usedUnits").isNumber())
                 .andExpect(jsonPath("$.availableUnits").isNumber());
     }
@@ -66,6 +85,7 @@ class EmergencyControllerTests {
         var saved = emergencyRepository.save(newEmergency());
 
         mockMvc.perform(put("/api/emergencies/{id}/status", saved.getId())
+                .header("Authorization", authHeader("HOSPITAL", "hospital_central"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {
@@ -75,6 +95,7 @@ class EmergencyControllerTests {
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(put("/api/emergencies/{id}/status", saved.getId())
+                .header("Authorization", authHeader("HOSPITAL", "hospital_central"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {
@@ -87,6 +108,7 @@ class EmergencyControllerTests {
 
     @Test
     void createEmergencyWaitsWhenResourcesAreFull() throws Exception {
+        String token = authHeader("BOMBEROS", "bomberos_central");
         String incident = """
                 {
                   "title": "Incendio grande",
@@ -97,31 +119,77 @@ class EmergencyControllerTests {
                 }
                 """;
 
+        mockMvc.perform(post("/api/emergencies/resources/add")
+                .header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "target": "BOMBEROS",
+                          "units": "8"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalUnits").value(8));
+
         mockMvc.perform(post("/api/emergencies")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(incident))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.assignedUnits").value(4));
 
         mockMvc.perform(post("/api/emergencies")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(incident))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.assignedUnits").value(4));
 
         mockMvc.perform(post("/api/emergencies")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(incident))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("WAITING"));
+                .andExpect(jsonPath("$.status").value("PENDING"));
 
-        mockMvc.perform(get("/api/emergencies/resources").param("target", "BOMBEROS"))
+        mockMvc.perform(get("/api/emergencies").param("target", "BOMBEROS")
+                .header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("WAITING"));
+
+        mockMvc.perform(get("/api/emergencies/resources").param("target", "BOMBEROS")
+                .header("Authorization", token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalUnits").value(8))
                 .andExpect(jsonPath("$.usedUnits").value(8))
                 .andExpect(jsonPath("$.waitingIncidents").value(1));
+    }
+
+    @Test
+    void addResourcesRejectsDailyLimitOverflow() throws Exception {
+        String token = authHeader("HOSPITAL", "hospital_limit");
+
+        mockMvc.perform(post("/api/emergencies/resources/add")
+                .header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "target": "HOSPITAL",
+                          "units": "10"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.remainingDailyAdd").value(0));
+
+        mockMvc.perform(post("/api/emergencies/resources/add")
+                .header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "target": "HOSPITAL",
+                          "units": "1"
+                        }
+                        """))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -138,7 +206,7 @@ class EmergencyControllerTests {
                         }
                         """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.assignedUnits").value(1))
                 .andExpect(jsonPath("$.resourceLabel").value("ambulancias"));
     }
@@ -157,7 +225,7 @@ class EmergencyControllerTests {
                         }
                         """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.assignedUnits").value(4))
                 .andExpect(jsonPath("$.resourceLabel").value("ambulancias"));
     }
@@ -185,5 +253,12 @@ class EmergencyControllerTests {
         emergency.setLocation("1.2136, -77.2811");
         emergency.setTargetEntity("HOSPITAL");
         return emergency;
+    }
+
+    private String authHeader(String role, String username) {
+        User user = new User();
+        user.setUsername(username);
+        user.setRole(role);
+        return "Bearer " + jwtService.generateToken(user);
     }
 }

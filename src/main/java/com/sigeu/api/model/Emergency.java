@@ -20,6 +20,7 @@ public class Emergency {
     private String type;
     private String status;
     private String targetEntity;
+    private String assignedOperatorUsername;
     private Integer assignedUnits;
     private String resourceLabel;
     private Integer estimatedResolveMinutes;
@@ -64,6 +65,9 @@ public class Emergency {
 
     public String getTargetEntity() { return targetEntity; }
     public void setTargetEntity(String targetEntity) { this.targetEntity = targetEntity; }
+
+    public String getAssignedOperatorUsername() { return assignedOperatorUsername; }
+    public void setAssignedOperatorUsername(String assignedOperatorUsername) { this.assignedOperatorUsername = assignedOperatorUsername; }
 
     public Integer getAssignedUnits() { return assignedUnits; }
     public void setAssignedUnits(Integer assignedUnits) { this.assignedUnits = assignedUnits; }

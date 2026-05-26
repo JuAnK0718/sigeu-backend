@@ -2,13 +2,17 @@ package com.sigeu.api.service;
 
 import com.sigeu.api.dto.ResourceSummary;
 import com.sigeu.api.model.Emergency;
+import com.sigeu.api.model.ResourceInventory;
 import com.sigeu.api.repository.EmergencyRepository;
+import com.sigeu.api.repository.ResourceInventoryRepository;
+import com.sigeu.api.security.JwtService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -24,34 +28,37 @@ public class EmergencyWorkflowService {
     private static final String RESOLVED = "RESOLVED";
 
     private final EmergencyRepository repository;
+    private final ResourceInventoryRepository inventoryRepository;
     private final Clock clock;
     private final boolean automationEnabled;
     private final int defaultResolveMinutes;
     private final int highPriorityResolveMinutes;
     private final int deleteAfterResolveMinutes;
+    private final int dailyAddLimit;
     private final Map<String, ResourcePool> pools;
 
     public EmergencyWorkflowService(
             EmergencyRepository repository,
+            ResourceInventoryRepository inventoryRepository,
             Clock clock,
             @Value("${sigeu.workflow.enabled:true}") boolean automationEnabled,
             @Value("${sigeu.workflow.resolve-minutes:15}") int defaultResolveMinutes,
             @Value("${sigeu.workflow.high-priority-resolve-minutes:10}") int highPriorityResolveMinutes,
             @Value("${sigeu.workflow.delete-after-resolve-minutes:10}") int deleteAfterResolveMinutes,
-            @Value("${sigeu.resources.policia:30}") int policeUnits,
-            @Value("${sigeu.resources.hospital:15}") int ambulanceUnits,
-            @Value("${sigeu.resources.bomberos:8}") int fireTruckUnits
+            @Value("${sigeu.resources.daily-add-limit:10}") int dailyAddLimit
     ) {
         this.repository = repository;
+        this.inventoryRepository = inventoryRepository;
         this.clock = clock;
         this.automationEnabled = automationEnabled;
         this.defaultResolveMinutes = defaultResolveMinutes;
         this.highPriorityResolveMinutes = highPriorityResolveMinutes;
         this.deleteAfterResolveMinutes = deleteAfterResolveMinutes;
+        this.dailyAddLimit = dailyAddLimit;
         this.pools = Map.of(
-                "POLICIA", new ResourcePool("POLICIA", "Policia", "policias", policeUnits),
-                "HOSPITAL", new ResourcePool("HOSPITAL", "Hospital", "ambulancias", ambulanceUnits),
-                "BOMBEROS", new ResourcePool("BOMBEROS", "Bomberos", "camiones", fireTruckUnits)
+                "POLICIA", new ResourcePool("POLICIA", "Policia", "policias"),
+                "HOSPITAL", new ResourcePool("HOSPITAL", "Hospital", "ambulancias"),
+                "BOMBEROS", new ResourcePool("BOMBEROS", "Bomberos", "camiones")
         );
     }
 
@@ -68,28 +75,34 @@ public class EmergencyWorkflowService {
     @Transactional
     public synchronized Emergency saveAndPlan(Emergency emergency) {
         Emergency saved = repository.save(prepareNewEmergency(emergency));
-        runAutomationCycle();
+        finishExpiredCases();
         return repository.findById(saved.getId()).orElse(saved);
     }
 
     @Transactional
-    public synchronized Optional<Emergency> updateStatus(Long id, String status) {
-        runAutomationCycle();
+    public synchronized Optional<Emergency> updateStatus(Long id, String status, JwtService.AuthenticatedUser actor) {
+        finishExpiredCases();
         return repository.findById(id).map(emergency -> {
             LocalDateTime now = now();
 
             if (IN_PROGRESS.equals(status)) {
+                if (!isEntityActorFor(emergency.getTargetEntity(), actor)) {
+                    return emergency;
+                }
                 ensureDecision(emergency);
-                if (!canAssign(emergency)) {
+                if (!canAssign(emergency, actor.username())) {
                     emergency.setStatus(WAITING);
                     emergency.setOperationalNote("Sin " + emergency.getResourceLabel() + " disponibles. Caso en espera automatica.");
                     return repository.save(emergency);
                 }
-                assign(emergency, now);
+                assign(emergency, now, actor.username());
                 return repository.save(emergency);
             }
 
             if (RESOLVED.equals(status)) {
+                if (!canManageEmergency(emergency, actor)) {
+                    return emergency;
+                }
                 resolve(emergency, now);
                 return repository.save(emergency);
             }
@@ -105,22 +118,73 @@ public class EmergencyWorkflowService {
     }
 
     @Transactional
-    public synchronized ResourceSummary resourcesFor(String targetEntity) {
-        runAutomationCycle();
+    public synchronized ResourceSummary resourcesFor(String targetEntity, JwtService.AuthenticatedUser actor) {
+        runAutomationCycleFor(targetEntity, actor);
         ResourcePool pool = pools.get(targetEntity);
         if (pool == null) return null;
 
-        int used = usedUnits(targetEntity);
+        ResourceInventory inventory = isEntityActorFor(targetEntity, actor) ? inventoryFor(actor) : emptyInventory(targetEntity);
+        resetDailyLimitIfNeeded(inventory);
+        int used = isEntityActorFor(targetEntity, actor) ? usedUnits(targetEntity, actor.username()) : 0;
         int waiting = repository.findByTargetEntityAndStatus(targetEntity, WAITING).size();
-        int inProgress = repository.findByTargetEntityAndStatus(targetEntity, IN_PROGRESS).size();
-        return new ResourceSummary(pool.target(), pool.label(), pool.unitName(), pool.totalUnits(), used, waiting, inProgress);
+        int inProgress = isEntityActorFor(targetEntity, actor)
+                ? repository.findByTargetEntityAndStatusAndAssignedOperatorUsername(targetEntity, IN_PROGRESS, actor.username()).size()
+                : repository.findByTargetEntityAndStatus(targetEntity, IN_PROGRESS).size();
+        return summaryFor(pool, inventory, used, waiting, inProgress);
+    }
+
+    @Transactional
+    public synchronized ResourceSummary addResources(String targetEntity, JwtService.AuthenticatedUser actor, int units) {
+        if (!isEntityActorFor(targetEntity, actor)) {
+            throw new IllegalArgumentException("Token de entidad requerido");
+        }
+        if (units < 1) {
+            throw new IllegalArgumentException("Agrega al menos 1 recurso");
+        }
+
+        ResourceInventory inventory = inventoryFor(actor);
+        resetDailyLimitIfNeeded(inventory);
+        if (inventory.getDailyAddedUnits() + units > dailyAddLimit) {
+            throw new IllegalArgumentException("Limite diario superado. Disponible hoy: " + Math.max(dailyAddLimit - inventory.getDailyAddedUnits(), 0));
+        }
+
+        inventory.setTotalUnits(safeInt(inventory.getTotalUnits()) + units);
+        inventory.setDailyAddedUnits(safeInt(inventory.getDailyAddedUnits()) + units);
+        inventoryRepository.save(inventory);
+        runAutomationCycleFor(targetEntity, actor);
+        return resourcesFor(targetEntity, actor);
     }
 
     @Scheduled(fixedDelayString = "${sigeu.workflow.tick-ms:60000}")
     @Transactional
     public synchronized void runAutomationCycle() {
         if (!automationEnabled) return;
+        finishExpiredCases();
+    }
 
+    @Transactional
+    public synchronized void runAutomationCycleFor(String targetEntity, JwtService.AuthenticatedUser actor) {
+        if (!automationEnabled) return;
+
+        finishExpiredCases();
+        if (!isEntityActorFor(targetEntity, actor)) return;
+
+        List<Emergency> candidates = repository.findUnassignedCandidates(targetEntity, List.of(WAITING, PENDING));
+        candidates.sort(Comparator.comparing(Emergency::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())));
+
+        for (Emergency emergency : candidates) {
+            ensureDecision(emergency);
+            if (canAssign(emergency, actor.username())) {
+                assign(emergency, now(), actor.username());
+            } else {
+                emergency.setStatus(WAITING);
+                emergency.setOperationalNote("Sin " + emergency.getResourceLabel() + " disponibles. Caso en espera automatica.");
+            }
+            repository.save(emergency);
+        }
+    }
+
+    private void finishExpiredCases() {
         LocalDateTime now = now();
 
         List<Emergency> toResolve = repository.findByStatusAndAutoResolveAtLessThanEqual(IN_PROGRESS, now);
@@ -133,25 +197,11 @@ public class EmergencyWorkflowService {
         if (!toDelete.isEmpty()) {
             repository.deleteAll(toDelete);
         }
-
-        List<Emergency> candidates = repository.findByStatusOrderByCreatedAtAsc(WAITING);
-        candidates.addAll(repository.findByStatusOrderByCreatedAtAsc(PENDING));
-        candidates.sort(Comparator.comparing(Emergency::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())));
-
-        for (Emergency emergency : candidates) {
-            ensureDecision(emergency);
-            if (canAssign(emergency)) {
-                assign(emergency, now);
-            } else {
-                emergency.setStatus(WAITING);
-                emergency.setOperationalNote("Sin " + emergency.getResourceLabel() + " disponibles. Caso en espera automatica.");
-            }
-            repository.save(emergency);
-        }
     }
 
-    private void assign(Emergency emergency, LocalDateTime now) {
+    private void assign(Emergency emergency, LocalDateTime now, String username) {
         emergency.setStatus(IN_PROGRESS);
+        emergency.setAssignedOperatorUsername(username);
         emergency.setAutoStartedAt(now);
         emergency.setAutoResolveAt(now.plusMinutes(resolveMinutes(emergency)));
         emergency.setAutoDeleteAt(null);
@@ -175,14 +225,16 @@ public class EmergencyWorkflowService {
         emergency.setEstimatedResolveMinutes(decision.resolveMinutes());
     }
 
-    private boolean canAssign(Emergency emergency) {
+    private boolean canAssign(Emergency emergency, String username) {
         ResourcePool pool = pools.get(emergency.getTargetEntity());
         if (pool == null) return false;
-        return usedUnits(emergency.getTargetEntity()) + safeUnits(emergency) <= pool.totalUnits();
+        ResourceInventory inventory = inventoryRepository.findByUsername(username).orElse(null);
+        if (inventory == null) return false;
+        return usedUnits(emergency.getTargetEntity(), username) + safeUnits(emergency) <= safeInt(inventory.getTotalUnits());
     }
 
-    private int usedUnits(String targetEntity) {
-        return repository.findByTargetEntityAndStatus(targetEntity, IN_PROGRESS).stream()
+    private int usedUnits(String targetEntity, String username) {
+        return repository.findByTargetEntityAndStatusAndAssignedOperatorUsername(targetEntity, IN_PROGRESS, username).stream()
                 .mapToInt(this::safeUnits)
                 .sum();
     }
@@ -199,7 +251,7 @@ public class EmergencyWorkflowService {
             default -> policeUnits(text);
         };
 
-        units = Math.max(1, Math.min(units, pool.totalUnits()));
+        units = Math.max(1, units);
         int minutes = high ? highPriorityResolveMinutes : defaultResolveMinutes;
         if (containsAny(text, "explosion", "incendio", "multiples", "varios", "grave")) {
             minutes = Math.max(highPriorityResolveMinutes, minutes + 5);
@@ -247,6 +299,67 @@ public class EmergencyWorkflowService {
         return Math.max(Optional.ofNullable(emergency.getAssignedUnits()).orElse(1), 1);
     }
 
+    private int safeInt(Integer value) {
+        return Math.max(Optional.ofNullable(value).orElse(0), 0);
+    }
+
+    private boolean isEntityActorFor(String targetEntity, JwtService.AuthenticatedUser actor) {
+        return actor != null && targetEntity != null && targetEntity.equals(actor.role()) && pools.containsKey(targetEntity);
+    }
+
+    private boolean canManageEmergency(Emergency emergency, JwtService.AuthenticatedUser actor) {
+        if (!isEntityActorFor(emergency.getTargetEntity(), actor)) return false;
+        String assignedUsername = emergency.getAssignedOperatorUsername();
+        return assignedUsername == null || assignedUsername.equals(actor.username());
+    }
+
+    private ResourceInventory inventoryFor(JwtService.AuthenticatedUser actor) {
+        return inventoryRepository.findByUsername(actor.username()).orElseGet(() -> {
+            ResourceInventory inventory = new ResourceInventory();
+            inventory.setUsername(actor.username());
+            inventory.setTargetEntity(actor.role());
+            inventory.setTotalUnits(0);
+            inventory.setDailyAddedUnits(0);
+            inventory.setDailyLimitDate(LocalDate.now(clock));
+            return inventoryRepository.save(inventory);
+        });
+    }
+
+    private ResourceInventory emptyInventory(String targetEntity) {
+        ResourceInventory inventory = new ResourceInventory();
+        inventory.setUsername("");
+        inventory.setTargetEntity(targetEntity);
+        inventory.setTotalUnits(0);
+        inventory.setDailyAddedUnits(0);
+        inventory.setDailyLimitDate(LocalDate.now(clock));
+        return inventory;
+    }
+
+    private void resetDailyLimitIfNeeded(ResourceInventory inventory) {
+        LocalDate today = LocalDate.now(clock);
+        if (!today.equals(inventory.getDailyLimitDate())) {
+            inventory.setDailyLimitDate(today);
+            inventory.setDailyAddedUnits(0);
+            if (inventory.getId() != null) {
+                inventoryRepository.save(inventory);
+            }
+        }
+    }
+
+    private ResourceSummary summaryFor(ResourcePool pool, ResourceInventory inventory, int used, int waiting, int inProgress) {
+        return new ResourceSummary(
+                pool.target(),
+                pool.label(),
+                pool.unitName(),
+                safeInt(inventory.getTotalUnits()),
+                used,
+                safeInt(inventory.getDailyAddedUnits()),
+                dailyAddLimit,
+                waiting,
+                inProgress
+        );
+    }
+
     private int resolveMinutes(Emergency emergency) {
         return Math.max(Optional.ofNullable(emergency.getEstimatedResolveMinutes()).orElse(defaultResolveMinutes), 1);
     }
@@ -255,6 +368,6 @@ public class EmergencyWorkflowService {
         return LocalDateTime.now(clock);
     }
 
-    private record ResourcePool(String target, String label, String unitName, int totalUnits) {}
+    private record ResourcePool(String target, String label, String unitName) {}
     private record ResourceDecision(int units, String resourceLabel, int resolveMinutes) {}
 }
