@@ -1,7 +1,9 @@
 package com.sigeu.api.controller;
 
 import com.sigeu.api.dto.AuthResponse;
+import com.sigeu.api.model.ResourceInventory;
 import com.sigeu.api.model.User;
+import com.sigeu.api.repository.ResourceInventoryRepository;
 import com.sigeu.api.repository.UserRepository;
 import com.sigeu.api.security.JwtService;
 import com.sigeu.api.security.PasswordService;
@@ -24,11 +26,13 @@ import java.util.Set;
 public class AuthController {
     private static final Set<String> VALID_ROLES = Set.of("CITIZEN", "POLICIA", "BOMBEROS", "HOSPITAL");
     private final UserRepository repository;
+    private final ResourceInventoryRepository inventoryRepository;
     private final JwtService jwtService;
     private final PasswordService passwordService;
 
-    public AuthController(UserRepository repository, JwtService jwtService, PasswordService passwordService) {
+    public AuthController(UserRepository repository, ResourceInventoryRepository inventoryRepository, JwtService jwtService, PasswordService passwordService) {
         this.repository = repository;
+        this.inventoryRepository = inventoryRepository;
         this.jwtService = jwtService;
         this.passwordService = passwordService;
     }
@@ -96,6 +100,7 @@ public class AuthController {
             newUser.setRole(role);
             newUser.setName(name);
             repository.save(newUser);
+            createEmptyInventoryForNewEntity(username, role);
             return ResponseEntity.ok().body("Usuario creado exitosamente");
 
         } catch (Exception e) {
@@ -127,5 +132,19 @@ public class AuthController {
     private String normalizeRole(String value) {
         if (value == null || value.isBlank()) return null;
         return value.trim().toUpperCase();
+    }
+
+    private void createEmptyInventoryForNewEntity(String username, String role) {
+        if ("CITIZEN".equals(role) || inventoryRepository.findByUsername(username).isPresent()) {
+            return;
+        }
+
+        ResourceInventory inventory = new ResourceInventory();
+        inventory.setUsername(username);
+        inventory.setTargetEntity(role);
+        inventory.setTotalUnits(0);
+        inventory.setDailyAddedUnits(0);
+        inventory.setDefaultResourcesApplied(true);
+        inventoryRepository.save(inventory);
     }
 }

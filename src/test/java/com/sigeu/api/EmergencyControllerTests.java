@@ -2,6 +2,7 @@ package com.sigeu.api;
 
 import com.sigeu.api.model.User;
 import com.sigeu.api.repository.EmergencyRepository;
+import com.sigeu.api.repository.ResourceInventoryRepository;
 import com.sigeu.api.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,11 +28,15 @@ class EmergencyControllerTests {
     private EmergencyRepository emergencyRepository;
 
     @Autowired
+    private ResourceInventoryRepository inventoryRepository;
+
+    @Autowired
     private JwtService jwtService;
 
     @BeforeEach
     void cleanDatabase() {
         emergencyRepository.deleteAll();
+        inventoryRepository.deleteAll();
     }
 
     @Test
@@ -54,18 +59,6 @@ class EmergencyControllerTests {
                 .andExpect(jsonPath("$.resourceLabel").value("policias"))
                 .andExpect(jsonPath("$.createdAt").exists());
 
-        mockMvc.perform(post("/api/emergencies/resources/add")
-                .header("Authorization", authHeader("POLICIA", "pol_central"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {
-                          "target": "POLICIA",
-                          "units": "5"
-                        }
-                        """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalUnits").value(5));
-
         mockMvc.perform(get("/api/emergencies").param("target", "policia")
                 .header("Authorization", authHeader("POLICIA", "pol_central")))
                 .andExpect(status().isOk())
@@ -75,7 +68,7 @@ class EmergencyControllerTests {
         mockMvc.perform(get("/api/emergencies/resources").param("target", "policia")
                 .header("Authorization", authHeader("POLICIA", "pol_central")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalUnits").value(5))
+                .andExpect(jsonPath("$.totalUnits").value(30))
                 .andExpect(jsonPath("$.usedUnits").isNumber())
                 .andExpect(jsonPath("$.availableUnits").isNumber());
     }
@@ -118,18 +111,6 @@ class EmergencyControllerTests {
                   "targetEntity": "BOMBEROS"
                 }
                 """;
-
-        mockMvc.perform(post("/api/emergencies/resources/add")
-                .header("Authorization", token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {
-                          "target": "BOMBEROS",
-                          "units": "8"
-                        }
-                        """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalUnits").value(8));
 
         mockMvc.perform(post("/api/emergencies")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -178,6 +159,7 @@ class EmergencyControllerTests {
                         }
                         """))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalUnits").value(25))
                 .andExpect(jsonPath("$.remainingDailyAdd").value(0));
 
         mockMvc.perform(post("/api/emergencies/resources/add")

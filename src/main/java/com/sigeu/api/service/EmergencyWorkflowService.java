@@ -45,7 +45,10 @@ public class EmergencyWorkflowService {
             @Value("${sigeu.workflow.resolve-minutes:15}") int defaultResolveMinutes,
             @Value("${sigeu.workflow.high-priority-resolve-minutes:10}") int highPriorityResolveMinutes,
             @Value("${sigeu.workflow.delete-after-resolve-minutes:10}") int deleteAfterResolveMinutes,
-            @Value("${sigeu.resources.daily-add-limit:10}") int dailyAddLimit
+            @Value("${sigeu.resources.daily-add-limit:10}") int dailyAddLimit,
+            @Value("${sigeu.resources.policia:30}") int policeDefaultUnits,
+            @Value("${sigeu.resources.hospital:15}") int ambulanceDefaultUnits,
+            @Value("${sigeu.resources.bomberos:8}") int fireTruckDefaultUnits
     ) {
         this.repository = repository;
         this.inventoryRepository = inventoryRepository;
@@ -56,9 +59,9 @@ public class EmergencyWorkflowService {
         this.deleteAfterResolveMinutes = deleteAfterResolveMinutes;
         this.dailyAddLimit = dailyAddLimit;
         this.pools = Map.of(
-                "POLICIA", new ResourcePool("POLICIA", "Policia", "policias"),
-                "HOSPITAL", new ResourcePool("HOSPITAL", "Hospital", "ambulancias"),
-                "BOMBEROS", new ResourcePool("BOMBEROS", "Bomberos", "camiones")
+                "POLICIA", new ResourcePool("POLICIA", "Policia", "policias", policeDefaultUnits),
+                "HOSPITAL", new ResourcePool("HOSPITAL", "Hospital", "ambulancias", ambulanceDefaultUnits),
+                "BOMBEROS", new ResourcePool("BOMBEROS", "Bomberos", "camiones", fireTruckDefaultUnits)
         );
     }
 
@@ -168,6 +171,7 @@ public class EmergencyWorkflowService {
 
         finishExpiredCases();
         if (!isEntityActorFor(targetEntity, actor)) return;
+        inventoryFor(actor);
 
         List<Emergency> candidates = repository.findUnassignedCandidates(targetEntity, List.of(WAITING, PENDING));
         candidates.sort(Comparator.comparing(Emergency::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())));
@@ -314,15 +318,17 @@ public class EmergencyWorkflowService {
     }
 
     private ResourceInventory inventoryFor(JwtService.AuthenticatedUser actor) {
-        return inventoryRepository.findByUsername(actor.username()).orElseGet(() -> {
-            ResourceInventory inventory = new ResourceInventory();
-            inventory.setUsername(actor.username());
-            inventory.setTargetEntity(actor.role());
-            inventory.setTotalUnits(0);
-            inventory.setDailyAddedUnits(0);
-            inventory.setDailyLimitDate(LocalDate.now(clock));
-            return inventoryRepository.save(inventory);
+        ResourceInventory inventory = inventoryRepository.findByUsername(actor.username()).orElseGet(() -> {
+            ResourceInventory createdInventory = new ResourceInventory();
+            createdInventory.setUsername(actor.username());
+            createdInventory.setTargetEntity(actor.role());
+            createdInventory.setTotalUnits(defaultUnitsFor(actor.role()));
+            createdInventory.setDailyAddedUnits(0);
+            createdInventory.setDailyLimitDate(LocalDate.now(clock));
+            createdInventory.setDefaultResourcesApplied(true);
+            return inventoryRepository.save(createdInventory);
         });
+        return applyDefaultResourcesToLegacyInventory(inventory, actor.role());
     }
 
     private ResourceInventory emptyInventory(String targetEntity) {
@@ -344,6 +350,23 @@ public class EmergencyWorkflowService {
                 inventoryRepository.save(inventory);
             }
         }
+    }
+
+    private ResourceInventory applyDefaultResourcesToLegacyInventory(ResourceInventory inventory, String targetEntity) {
+        if (Boolean.TRUE.equals(inventory.getDefaultResourcesApplied())) {
+            return inventory;
+        }
+
+        if (safeInt(inventory.getTotalUnits()) == 0) {
+            inventory.setTotalUnits(defaultUnitsFor(targetEntity));
+        }
+        inventory.setDefaultResourcesApplied(true);
+        return inventoryRepository.save(inventory);
+    }
+
+    private int defaultUnitsFor(String targetEntity) {
+        ResourcePool pool = pools.get(targetEntity);
+        return pool == null ? 0 : pool.defaultUnits();
     }
 
     private ResourceSummary summaryFor(ResourcePool pool, ResourceInventory inventory, int used, int waiting, int inProgress) {
@@ -368,6 +391,6 @@ public class EmergencyWorkflowService {
         return LocalDateTime.now(clock);
     }
 
-    private record ResourcePool(String target, String label, String unitName) {}
+    private record ResourcePool(String target, String label, String unitName, int defaultUnits) {}
     private record ResourceDecision(int units, String resourceLabel, int resolveMinutes) {}
 }

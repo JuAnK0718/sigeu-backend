@@ -22,12 +22,14 @@ public class ResourceInventory {
     private Integer totalUnits;
     private Integer dailyAddedUnits;
     private LocalDate dailyLimitDate;
+    private Boolean defaultResourcesApplied;
 
     @PrePersist
     protected void onCreate() {
         if (this.totalUnits == null) this.totalUnits = 0;
         if (this.dailyAddedUnits == null) this.dailyAddedUnits = 0;
         if (this.dailyLimitDate == null) this.dailyLimitDate = LocalDate.now();
+        if (this.defaultResourcesApplied == null) this.defaultResourcesApplied = false;
     }
 
     public Long getId() { return id; }
@@ -47,4 +49,7 @@ public class ResourceInventory {
 
     public LocalDate getDailyLimitDate() { return dailyLimitDate; }
     public void setDailyLimitDate(LocalDate dailyLimitDate) { this.dailyLimitDate = dailyLimitDate; }
+
+    public Boolean getDefaultResourcesApplied() { return defaultResourcesApplied; }
+    public void setDefaultResourcesApplied(Boolean defaultResourcesApplied) { this.defaultResourcesApplied = defaultResourcesApplied; }
 }

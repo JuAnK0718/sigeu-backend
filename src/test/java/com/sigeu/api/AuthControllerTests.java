@@ -1,6 +1,7 @@
 package com.sigeu.api;
 
 import com.sigeu.api.model.User;
+import com.sigeu.api.repository.ResourceInventoryRepository;
 import com.sigeu.api.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,8 +26,12 @@ class AuthControllerTests {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private ResourceInventoryRepository inventoryRepository;
+
     @BeforeEach
     void cleanDatabase() {
+        inventoryRepository.deleteAll();
         userRepository.deleteAll();
     }
 
@@ -52,6 +57,11 @@ class AuthControllerTests {
         assertThat(savedUser.get().getName()).isEqualTo("Unidad Norte");
         assertThat(savedUser.get().getPassword()).isNotEqualTo("Abc12345");
         assertThat(savedUser.get().getPassword()).startsWith("$2");
+
+        var inventory = inventoryRepository.findByUsername("operador_01");
+        assertThat(inventory).isPresent();
+        assertThat(inventory.get().getTotalUnits()).isZero();
+        assertThat(inventory.get().getDefaultResourcesApplied()).isTrue();
     }
 
     @Test
