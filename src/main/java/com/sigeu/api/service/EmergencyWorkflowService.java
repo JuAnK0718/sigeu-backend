@@ -26,6 +26,17 @@ public class EmergencyWorkflowService {
     private static final String WAITING = "WAITING";
     private static final String IN_PROGRESS = "IN_PROGRESS";
     private static final String RESOLVED = "RESOLVED";
+    private static final int MEDICAL_SINGLE_MINUTES = 30;
+    private static final int ROAD_MINOR_MINUTES = 30;
+    private static final int ROAD_INJURY_MINUTES = 60;
+    private static final int ROAD_MAJOR_MINUTES = 90;
+    private static final int ROAD_BLOCKAGE_MINUTES = 180;
+    private static final int ROAD_LANDSLIDE_MINUTES = 360;
+    private static final int FIRE_MINUTES = 90;
+    private static final int COMPLEX_FIRE_MINUTES = 150;
+    private static final int POLICE_STANDARD_MINUTES = 45;
+    private static final int POLICE_HIGH_RISK_MINUTES = 90;
+    private static final int FALLBACK_HIGH_MINUTES = 45;
 
     private final EmergencyRepository repository;
     private final ResourceInventoryRepository inventoryRepository;
@@ -241,7 +252,7 @@ public class EmergencyWorkflowService {
         emergency.setAutoResolveAt(now.plusMinutes(resolveMinutes(emergency)));
         emergency.setAutoDeleteAt(null);
         emergency.setOperationalNote("Despacho automatico: " + emergency.getAssignedUnits() + " " + emergency.getResourceLabel()
-                + ". Resolucion estimada en " + resolveMinutes(emergency) + " min.");
+                + ". Resolucion estimada en " + formatDuration(resolveMinutes(emergency)) + ".");
     }
 
     private void resolve(Emergency emergency, LocalDateTime now) {
@@ -287,10 +298,7 @@ public class EmergencyWorkflowService {
         };
 
         units = Math.max(1, units);
-        int minutes = high ? highPriorityResolveMinutes : defaultResolveMinutes;
-        if (containsAny(text, "explosion", "incendio", "multiples", "varios", "grave")) {
-            minutes = Math.max(highPriorityResolveMinutes, minutes + 5);
-        }
+        int minutes = estimateResolveMinutes(target, text, high);
         return new ResourceDecision(units, pool.unitName(), minutes);
     }
 
@@ -299,6 +307,7 @@ public class EmergencyWorkflowService {
         if (containsAny(text, "robo", "asalto", "violencia")) units += 3;
         if (containsAny(text, "arma", "disparo", "secuestro")) units += 5;
         if (containsAny(text, "incendio", "fuego", "multitud", "zona")) units += 2;
+        if (hasRoadBlockage(text)) units += 2;
         return units;
     }
 
@@ -321,6 +330,70 @@ public class EmergencyWorkflowService {
         if (containsAny(text, "fuego", "llamas", "incendio", "humo")) units += 2;
         if (containsAny(text, "explosion", "gas", "atrapado", "grande")) units += 1;
         return units;
+    }
+
+    private int estimateResolveMinutes(String target, String text, boolean high) {
+        if (hasLongRoadDisruption(text)) return ROAD_LANDSLIDE_MINUTES;
+        if (hasRoadBlockage(text)) return ROAD_BLOCKAGE_MINUTES;
+        if (hasMajorRoadIncident(text)) return ROAD_MAJOR_MINUTES;
+        if (hasRoadIncident(text) && hasInjurySignal(text)) return ROAD_INJURY_MINUTES;
+        if (hasRoadIncident(text)) return ROAD_MINOR_MINUTES;
+
+        if ("BOMBEROS".equals(target)) {
+            if (containsAny(text, "explosion", "gas", "atrapado", "colapso", "estructura", "edificio", "grande")) {
+                return COMPLEX_FIRE_MINUTES;
+            }
+            if (containsAny(text, "incendio", "fuego", "llamas", "humo")) {
+                return FIRE_MINUTES;
+            }
+        }
+
+        if ("HOSPITAL".equals(target)) {
+            if (containsAny(text, "varios heridos", "varias personas", "multiples", "múltiples", "muchos heridos", "bus", "choque multiple", "choque múltiple")) {
+                return ROAD_INJURY_MINUTES;
+            }
+            return MEDICAL_SINGLE_MINUTES;
+        }
+
+        if ("POLICIA".equals(target)) {
+            if (containsAny(text, "arma", "disparo", "secuestro", "violencia", "multitud", "disturbio")) {
+                return POLICE_HIGH_RISK_MINUTES;
+            }
+            if (containsAny(text, "robo", "asalto", "hurto", "sospechoso")) {
+                return POLICE_STANDARD_MINUTES;
+            }
+        }
+
+        if (high) return Math.max(highPriorityResolveMinutes, FALLBACK_HIGH_MINUTES);
+        return Math.max(defaultResolveMinutes, ROAD_MINOR_MINUTES);
+    }
+
+    private boolean hasRoadIncident(String text) {
+        return containsAny(text, "accidente", "choque", "colision", "colisión", "moto", "motocicleta", "vehiculo", "vehículo", "carro", "bus", "camion", "camión", "via", "vía", "carretera", "avenida");
+    }
+
+    private boolean hasRoadBlockage(String text) {
+        return containsAny(text, "via bloqueada", "vía bloqueada", "carretera bloqueada", "bloqueo de via", "bloqueo de vía", "cierre vial", "paso cerrado", "trafico detenido", "tráfico detenido", "obstruccion", "obstrucción", "arbol caido", "árbol caído", "inundacion", "inundación");
+    }
+
+    private boolean hasLongRoadDisruption(String text) {
+        return containsAny(text, "derrumbe", "deslizamiento", "deslizamiento de tierra", "rocas", "lodo", "hundimiento", "puente caido", "puente caído", "colapso de via", "colapso de vía");
+    }
+
+    private boolean hasMajorRoadIncident(String text) {
+        return containsAny(text, "choque multiple", "choque múltiple", "varios vehiculos", "varios vehículos", "bus", "camion", "camión", "volcamiento", "atrapado", "atrapados", "explosion", "explosión", "fatal", "muerto", "fallecido");
+    }
+
+    private boolean hasInjurySignal(String text) {
+        return containsAny(text, "herido", "heridos", "lesionado", "lesionados", "victima", "víctima", "victimas", "víctimas", "inconsciente", "sin respuesta", "no responde", "sangre", "fractura");
+    }
+
+    private String formatDuration(int minutes) {
+        if (minutes < 60) return minutes + " min";
+        int hours = minutes / 60;
+        int remainingMinutes = minutes % 60;
+        if (remainingMinutes == 0) return hours + " h";
+        return hours + " h " + remainingMinutes + " min";
     }
 
     private boolean containsAny(String text, String... words) {

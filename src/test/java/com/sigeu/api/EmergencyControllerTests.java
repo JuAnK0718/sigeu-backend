@@ -277,6 +277,59 @@ class EmergencyControllerTests {
     }
 
     @Test
+    void createMinorRoadIncidentUsesShortRoadAverageTime() throws Exception {
+        mockMvc.perform(post("/api/emergencies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "title": "Caida de motociclista",
+                          "description": "Motociclista se cayo, se levanto y la via sigue libre.",
+                          "location": "1.2136, -77.2811",
+                          "type": "ACCIDENT",
+                          "targetEntity": "POLICIA"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assignedUnits").value(2))
+                .andExpect(jsonPath("$.estimatedResolveMinutes").value(30));
+    }
+
+    @Test
+    void createMajorRoadIncidentUsesLongerRoadAverageTime() throws Exception {
+        mockMvc.perform(post("/api/emergencies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "title": "Choque multiple",
+                          "description": "Choque multiple de bus y camion con varios heridos en la via.",
+                          "location": "1.2136, -77.2811",
+                          "type": "ACCIDENT",
+                          "targetEntity": "POLICIA"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.estimatedResolveMinutes").value(90));
+    }
+
+    @Test
+    void createRoadLandslideUsesLongOperationalAverageTime() throws Exception {
+        mockMvc.perform(post("/api/emergencies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "title": "Derrumbe en carretera",
+                          "description": "Carretera bloqueada por deslizamiento de tierra y rocas.",
+                          "location": "1.2136, -77.2811",
+                          "type": "ACCIDENT",
+                          "targetEntity": "POLICIA"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assignedUnits").value(4))
+                .andExpect(jsonPath("$.estimatedResolveMinutes").value(360));
+    }
+
+    @Test
     void createEmergencyRejectsTooLongTitle() throws Exception {
         mockMvc.perform(post("/api/emergencies")
                 .contentType(MediaType.APPLICATION_JSON)
