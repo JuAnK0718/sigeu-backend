@@ -12,6 +12,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -42,6 +43,7 @@ class EmergencyControllerTests {
     @Test
     void createEmergencyNormalizesTargetAndAssignsResources() throws Exception {
         mockMvc.perform(post("/api/emergencies")
+                .header("Authorization", authHeader("CITIZEN", "citizen_track"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {
@@ -57,7 +59,14 @@ class EmergencyControllerTests {
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.assignedUnits").isNumber())
                 .andExpect(jsonPath("$.resourceLabel").value("policias"))
+                .andExpect(jsonPath("$.reporterUsername").value("citizen_track"))
                 .andExpect(jsonPath("$.createdAt").exists());
+
+        mockMvc.perform(get("/api/emergencies/mine")
+                .header("Authorization", authHeader("CITIZEN", "citizen_track")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].title").value("Incidente vial"))
+                .andExpect(jsonPath("$[0].reporterUsername").value("citizen_track"));
 
         mockMvc.perform(get("/api/emergencies").param("target", "policia")
                 .header("Authorization", authHeader("POLICIA", "pol_central")))
@@ -96,7 +105,23 @@ class EmergencyControllerTests {
                         }
                         """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("RESOLVED"));
+                .andExpect(jsonPath("$.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.resolvedAt").exists());
+    }
+
+    @Test
+    void deleteEmergencyAcceptsReasonWithoutBreakingExistingDeleteFlow() throws Exception {
+        var saved = emergencyRepository.save(newEmergency());
+
+        mockMvc.perform(delete("/api/emergencies/{id}", saved.getId())
+                .header("Authorization", authHeader("POLICIA", "pol_delete"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "reason": "Reporte duplicado"
+                        }
+                        """))
+                .andExpect(status().isOk());
     }
 
     @Test

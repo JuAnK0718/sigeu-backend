@@ -129,6 +129,7 @@ public class EmergencyWorkflowService {
                 emergency.setAutoStartedAt(null);
                 emergency.setAutoResolveAt(null);
                 emergency.setAutoDeleteAt(null);
+                emergency.setResolvedAt(null);
             }
             return repository.save(emergency);
         });
@@ -251,12 +252,14 @@ public class EmergencyWorkflowService {
         emergency.setAutoStartedAt(now);
         emergency.setAutoResolveAt(now.plusMinutes(resolveMinutes(emergency)));
         emergency.setAutoDeleteAt(null);
+        emergency.setResolvedAt(null);
         emergency.setOperationalNote("Despacho automatico: " + emergency.getAssignedUnits() + " " + emergency.getResourceLabel()
                 + ". Resolucion estimada en " + formatDuration(resolveMinutes(emergency)) + ".");
     }
 
     private void resolve(Emergency emergency, LocalDateTime now) {
         emergency.setStatus(RESOLVED);
+        emergency.setResolvedAt(now);
         emergency.setAutoDeleteAt(now.plusMinutes(deleteAfterResolveMinutes));
         emergency.setOperationalNote("Caso resuelto. Recursos liberados; limpieza automatica en " + deleteAfterResolveMinutes + " min.");
     }

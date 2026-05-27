@@ -50,6 +50,13 @@ public class EmergencyController {
         return repository.findAllByOrderByCreatedAtDesc();
     }
 
+    @GetMapping("/mine")
+    public List<Emergency> mine(HttpServletRequest request) {
+        JwtService.AuthenticatedUser actor = authUser(request);
+        if (actor == null) return List.of();
+        return repository.findByReporterUsernameOrderByCreatedAtDesc(actor.username());
+    }
+
     @GetMapping("/resources")
     public ResponseEntity<?> resources(@RequestParam String target, HttpServletRequest request) {
         String normalizedTarget = normalize(target);
@@ -95,7 +102,7 @@ public class EmergencyController {
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@RequestBody Emergency emergency) {
+    public ResponseEntity<?> create(@RequestBody Emergency emergency, HttpServletRequest request) {
         String title = InputRules.clean(emergency.getTitle());
         String description = InputRules.clean(emergency.getDescription());
         String location = InputRules.clean(emergency.getLocation());
@@ -130,6 +137,10 @@ public class EmergencyController {
         emergency.setLocation(location);
         emergency.setType(type);
         emergency.setTargetEntity(target);
+        JwtService.AuthenticatedUser actor = authUser(request);
+        if (actor != null && "CITIZEN".equals(actor.role())) {
+            emergency.setReporterUsername(actor.username());
+        }
         if (!InputRules.isBlank(emergency.getStatus())) {
             String status = normalize(emergency.getStatus());
             if (!VALID_STATUSES.contains(status)) {
@@ -154,8 +165,15 @@ public class EmergencyController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Long id) {
+    public ResponseEntity<?> delete(@PathVariable Long id, @RequestBody(required = false) Map<String, String> body, HttpServletRequest request) {
         return repository.findById(id).map(emergency -> {
+            String reason = body == null ? null : InputRules.clean(body.get("reason"));
+            if (!InputRules.isBlank(reason)) {
+                if (InputRules.exceeds(reason, InputRules.DELETE_REASON_MAX)) {
+                    reason = reason.substring(0, InputRules.DELETE_REASON_MAX);
+                }
+                emergency.setDeleteReason(reason);
+            }
             repository.delete(emergency);
             return ResponseEntity.ok().build();
         }).orElse(ResponseEntity.notFound().build());

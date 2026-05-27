@@ -20,6 +20,7 @@ public class Emergency {
     private String type;
     private String status;
     private String targetEntity;
+    private String reporterUsername;
     private String assignedOperatorUsername;
     private Integer assignedUnits;
     private String resourceLabel;
@@ -36,6 +37,9 @@ public class Emergency {
     private LocalDateTime autoStartedAt;
     private LocalDateTime autoResolveAt;
     private LocalDateTime autoDeleteAt;
+    private LocalDateTime resolvedAt;
+    @Column(length = 180)
+    private String deleteReason;
 
     @PrePersist
     protected void onCreate() {
@@ -66,6 +70,9 @@ public class Emergency {
     public String getTargetEntity() { return targetEntity; }
     public void setTargetEntity(String targetEntity) { this.targetEntity = targetEntity; }
 
+    public String getReporterUsername() { return reporterUsername; }
+    public void setReporterUsername(String reporterUsername) { this.reporterUsername = reporterUsername; }
+
     public String getAssignedOperatorUsername() { return assignedOperatorUsername; }
     public void setAssignedOperatorUsername(String assignedOperatorUsername) { this.assignedOperatorUsername = assignedOperatorUsername; }
 
@@ -95,6 +102,12 @@ public class Emergency {
 
     public LocalDateTime getAutoDeleteAt() { return autoDeleteAt; }
     public void setAutoDeleteAt(LocalDateTime autoDeleteAt) { this.autoDeleteAt = autoDeleteAt; }
+
+    public LocalDateTime getResolvedAt() { return resolvedAt; }
+    public void setResolvedAt(LocalDateTime resolvedAt) { this.resolvedAt = resolvedAt; }
+
+    public String getDeleteReason() { return deleteReason; }
+    public void setDeleteReason(String deleteReason) { this.deleteReason = deleteReason; }
 
     public String getImage() { return image; }
     public void setImage(String image) { this.image = image; }

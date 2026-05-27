@@ -11,6 +11,7 @@ public final class InputRules {
     public static final int DESCRIPTION_MAX = 1000;
     public static final int LOCATION_MAX = 120;
     public static final int TYPE_MAX = 40;
+    public static final int DELETE_REASON_MAX = 180;
     public static final int IMAGE_MAX = 6_000_000;
 
     private static final Pattern USERNAME_PATTERN = Pattern.compile("^[a-z0-9_]{4,30}$");

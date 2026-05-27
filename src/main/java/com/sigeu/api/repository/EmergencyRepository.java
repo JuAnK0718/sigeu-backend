@@ -10,6 +10,7 @@ import java.util.List;
 
 public interface EmergencyRepository extends JpaRepository<Emergency, Long> {
     List<Emergency> findByTargetEntityOrderByCreatedAtDesc(String targetEntity);
+    List<Emergency> findByReporterUsernameOrderByCreatedAtDesc(String reporterUsername);
     List<Emergency> findAllByOrderByCreatedAtDesc();
     List<Emergency> findByStatusOrderByCreatedAtAsc(String status);
     List<Emergency> findByStatusAndAutoResolveAtLessThanEqual(String status, LocalDateTime autoResolveAt);
