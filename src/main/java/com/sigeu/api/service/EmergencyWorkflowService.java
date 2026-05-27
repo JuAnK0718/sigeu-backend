@@ -35,6 +35,7 @@ public class EmergencyWorkflowService {
     private final int highPriorityResolveMinutes;
     private final int deleteAfterResolveMinutes;
     private final int dailyAddLimit;
+    private final int dailyRemoveLimit;
     private final Map<String, ResourcePool> pools;
 
     public EmergencyWorkflowService(
@@ -46,6 +47,7 @@ public class EmergencyWorkflowService {
             @Value("${sigeu.workflow.high-priority-resolve-minutes:10}") int highPriorityResolveMinutes,
             @Value("${sigeu.workflow.delete-after-resolve-minutes:10}") int deleteAfterResolveMinutes,
             @Value("${sigeu.resources.daily-add-limit:10}") int dailyAddLimit,
+            @Value("${sigeu.resources.daily-remove-limit:10}") int dailyRemoveLimit,
             @Value("${sigeu.resources.policia:30}") int policeDefaultUnits,
             @Value("${sigeu.resources.hospital:15}") int ambulanceDefaultUnits,
             @Value("${sigeu.resources.bomberos:8}") int fireTruckDefaultUnits
@@ -58,6 +60,7 @@ public class EmergencyWorkflowService {
         this.highPriorityResolveMinutes = highPriorityResolveMinutes;
         this.deleteAfterResolveMinutes = deleteAfterResolveMinutes;
         this.dailyAddLimit = dailyAddLimit;
+        this.dailyRemoveLimit = dailyRemoveLimit;
         this.pools = Map.of(
                 "POLICIA", new ResourcePool("POLICIA", "Policia", "policias", policeDefaultUnits),
                 "HOSPITAL", new ResourcePool("HOSPITAL", "Hospital", "ambulancias", ambulanceDefaultUnits),
@@ -153,6 +156,34 @@ public class EmergencyWorkflowService {
 
         inventory.setTotalUnits(safeInt(inventory.getTotalUnits()) + units);
         inventory.setDailyAddedUnits(safeInt(inventory.getDailyAddedUnits()) + units);
+        inventoryRepository.save(inventory);
+        runAutomationCycleFor(targetEntity, actor);
+        return resourcesFor(targetEntity, actor);
+    }
+
+    @Transactional
+    public synchronized ResourceSummary removeResources(String targetEntity, JwtService.AuthenticatedUser actor, int units) {
+        if (!isEntityActorFor(targetEntity, actor)) {
+            throw new IllegalArgumentException("Token de entidad requerido");
+        }
+        if (units < 1) {
+            throw new IllegalArgumentException("Retira al menos 1 recurso");
+        }
+
+        ResourceInventory inventory = inventoryFor(actor);
+        resetDailyLimitIfNeeded(inventory);
+
+        int used = usedUnits(targetEntity, actor.username());
+        int available = Math.max(safeInt(inventory.getTotalUnits()) - used, 0);
+        if (units > available) {
+            throw new IllegalArgumentException("No puedes retirar recursos ocupados. Disponibles para retirar: " + available);
+        }
+        if (inventory.getDailyRemovedUnits() + units > dailyRemoveLimit) {
+            throw new IllegalArgumentException("Limite diario de retiro superado. Disponible hoy: " + Math.max(dailyRemoveLimit - inventory.getDailyRemovedUnits(), 0));
+        }
+
+        inventory.setTotalUnits(safeInt(inventory.getTotalUnits()) - units);
+        inventory.setDailyRemovedUnits(safeInt(inventory.getDailyRemovedUnits()) + units);
         inventoryRepository.save(inventory);
         runAutomationCycleFor(targetEntity, actor);
         return resourcesFor(targetEntity, actor);
@@ -324,6 +355,7 @@ public class EmergencyWorkflowService {
             createdInventory.setTargetEntity(actor.role());
             createdInventory.setTotalUnits(defaultUnitsFor(actor.role()));
             createdInventory.setDailyAddedUnits(0);
+            createdInventory.setDailyRemovedUnits(0);
             createdInventory.setDailyLimitDate(LocalDate.now(clock));
             createdInventory.setDefaultResourcesApplied(true);
             return inventoryRepository.save(createdInventory);
@@ -337,18 +369,35 @@ public class EmergencyWorkflowService {
         inventory.setTargetEntity(targetEntity);
         inventory.setTotalUnits(0);
         inventory.setDailyAddedUnits(0);
+        inventory.setDailyRemovedUnits(0);
         inventory.setDailyLimitDate(LocalDate.now(clock));
         return inventory;
     }
 
     private void resetDailyLimitIfNeeded(ResourceInventory inventory) {
         LocalDate today = LocalDate.now(clock);
+        boolean changed = false;
+
+        if (inventory.getDailyAddedUnits() == null) {
+            inventory.setDailyAddedUnits(0);
+            changed = true;
+        }
+        if (inventory.getDailyRemovedUnits() == null) {
+            inventory.setDailyRemovedUnits(0);
+            changed = true;
+        }
+        if (inventory.getDailyLimitDate() == null) {
+            inventory.setDailyLimitDate(today);
+            changed = true;
+        }
         if (!today.equals(inventory.getDailyLimitDate())) {
             inventory.setDailyLimitDate(today);
             inventory.setDailyAddedUnits(0);
-            if (inventory.getId() != null) {
-                inventoryRepository.save(inventory);
-            }
+            inventory.setDailyRemovedUnits(0);
+            changed = true;
+        }
+        if (changed && inventory.getId() != null) {
+            inventoryRepository.save(inventory);
         }
     }
 
@@ -378,6 +427,8 @@ public class EmergencyWorkflowService {
                 used,
                 safeInt(inventory.getDailyAddedUnits()),
                 dailyAddLimit,
+                safeInt(inventory.getDailyRemovedUnits()),
+                dailyRemoveLimit,
                 waiting,
                 inProgress
         );

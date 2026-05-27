@@ -175,6 +175,70 @@ class EmergencyControllerTests {
     }
 
     @Test
+    void removeResourcesOnlyRemovesAvailableUnitsAndRespectsDailyLimit() throws Exception {
+        String token = authHeader("POLICIA", "pol_remove");
+
+        mockMvc.perform(post("/api/emergencies/resources/remove")
+                .header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "target": "POLICIA",
+                          "units": "5"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalUnits").value(25))
+                .andExpect(jsonPath("$.dailyRemovedUnits").value(5))
+                .andExpect(jsonPath("$.remainingDailyRemove").value(5));
+
+        mockMvc.perform(post("/api/emergencies/resources/remove")
+                .header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "target": "POLICIA",
+                          "units": "6"
+                        }
+                        """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void removeResourcesRejectsOccupiedUnits() throws Exception {
+        String token = authHeader("BOMBEROS", "bomberos_remove");
+
+        mockMvc.perform(post("/api/emergencies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "title": "Incendio grande",
+                          "description": "Casa en llamas con humo y explosion",
+                          "location": "1.2136, -77.2811",
+                          "type": "FIRE",
+                          "targetEntity": "BOMBEROS"
+                        }
+                        """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/emergencies").param("target", "BOMBEROS")
+                .header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("IN_PROGRESS"));
+
+        mockMvc.perform(post("/api/emergencies/resources/remove")
+                .header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "target": "BOMBEROS",
+                          "units": "5"
+                        }
+                        """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void createMedicalEmergencyUsesOneAmbulanceForSingleUnconsciousPerson() throws Exception {
         mockMvc.perform(post("/api/emergencies")
                 .contentType(MediaType.APPLICATION_JSON)

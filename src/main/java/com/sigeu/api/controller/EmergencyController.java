@@ -77,6 +77,23 @@ public class EmergencyController {
         }
     }
 
+    @PostMapping("/resources/remove")
+    public ResponseEntity<?> removeResources(@RequestBody Map<String, String> body, HttpServletRequest request) {
+        String target = normalize(body.get("target"));
+        if (target == null || !VALID_TARGETS.contains(target)) {
+            return ResponseEntity.badRequest().body("Entidad destino no valida");
+        }
+
+        try {
+            int units = Integer.parseInt(body.getOrDefault("units", "0"));
+            return ResponseEntity.ok(workflowService.removeResources(target, authUser(request), units));
+        } catch (NumberFormatException ex) {
+            return ResponseEntity.badRequest().body("Cantidad no valida");
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage());
+        }
+    }
+
     @PostMapping
     public ResponseEntity<?> create(@RequestBody Emergency emergency) {
         String title = InputRules.clean(emergency.getTitle());

@@ -21,6 +21,7 @@ public class ResourceInventory {
 
     private Integer totalUnits;
     private Integer dailyAddedUnits;
+    private Integer dailyRemovedUnits;
     private LocalDate dailyLimitDate;
     private Boolean defaultResourcesApplied;
 
@@ -28,6 +29,7 @@ public class ResourceInventory {
     protected void onCreate() {
         if (this.totalUnits == null) this.totalUnits = 0;
         if (this.dailyAddedUnits == null) this.dailyAddedUnits = 0;
+        if (this.dailyRemovedUnits == null) this.dailyRemovedUnits = 0;
         if (this.dailyLimitDate == null) this.dailyLimitDate = LocalDate.now();
         if (this.defaultResourcesApplied == null) this.defaultResourcesApplied = false;
     }
@@ -46,6 +48,9 @@ public class ResourceInventory {
 
     public Integer getDailyAddedUnits() { return dailyAddedUnits; }
     public void setDailyAddedUnits(Integer dailyAddedUnits) { this.dailyAddedUnits = dailyAddedUnits; }
+
+    public Integer getDailyRemovedUnits() { return dailyRemovedUnits; }
+    public void setDailyRemovedUnits(Integer dailyRemovedUnits) { this.dailyRemovedUnits = dailyRemovedUnits; }
 
     public LocalDate getDailyLimitDate() { return dailyLimitDate; }
     public void setDailyLimitDate(LocalDate dailyLimitDate) { this.dailyLimitDate = dailyLimitDate; }

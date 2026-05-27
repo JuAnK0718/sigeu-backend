@@ -10,10 +10,13 @@ public class ResourceSummary {
     private int dailyAddedUnits;
     private int dailyAddLimit;
     private int remainingDailyAdd;
+    private int dailyRemovedUnits;
+    private int dailyRemoveLimit;
+    private int remainingDailyRemove;
     private int waitingIncidents;
     private int inProgressIncidents;
 
-    public ResourceSummary(String targetEntity, String label, String unitName, int totalUnits, int usedUnits, int dailyAddedUnits, int dailyAddLimit, int waitingIncidents, int inProgressIncidents) {
+    public ResourceSummary(String targetEntity, String label, String unitName, int totalUnits, int usedUnits, int dailyAddedUnits, int dailyAddLimit, int dailyRemovedUnits, int dailyRemoveLimit, int waitingIncidents, int inProgressIncidents) {
         this.targetEntity = targetEntity;
         this.label = label;
         this.unitName = unitName;
@@ -23,6 +26,9 @@ public class ResourceSummary {
         this.dailyAddedUnits = dailyAddedUnits;
         this.dailyAddLimit = dailyAddLimit;
         this.remainingDailyAdd = Math.max(dailyAddLimit - dailyAddedUnits, 0);
+        this.dailyRemovedUnits = dailyRemovedUnits;
+        this.dailyRemoveLimit = dailyRemoveLimit;
+        this.remainingDailyRemove = Math.max(dailyRemoveLimit - dailyRemovedUnits, 0);
         this.waitingIncidents = waitingIncidents;
         this.inProgressIncidents = inProgressIncidents;
     }
@@ -36,6 +42,9 @@ public class ResourceSummary {
     public int getDailyAddedUnits() { return dailyAddedUnits; }
     public int getDailyAddLimit() { return dailyAddLimit; }
     public int getRemainingDailyAdd() { return remainingDailyAdd; }
+    public int getDailyRemovedUnits() { return dailyRemovedUnits; }
+    public int getDailyRemoveLimit() { return dailyRemoveLimit; }
+    public int getRemainingDailyRemove() { return remainingDailyRemove; }
     public int getWaitingIncidents() { return waitingIncidents; }
     public int getInProgressIncidents() { return inProgressIncidents; }
 }
