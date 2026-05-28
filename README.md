@@ -31,6 +31,21 @@ La aplicacion sigue una arquitectura por capas:
 - Maven
 - Railway para despliegue
 
+API REST para gestión de emergencias urbanas - Pasto.
+
+## Tecnologías
+- Java 17 + Spring Boot
+- PostgreSQL
+
+## Ejecutar
+
+mvn spring-boot:run
+
+## Endpoints principales
+- POST /api/emergencias - Registrar emergencia
+- GET /api/emergencias - Listar emergencias
+- POST /api/emergencias/clasificar - Clasificar tipo de emergencia
+
 ## Modulos principales
 
 - Autenticacion: inicio de sesion, registro y recuperacion basica de acceso.
@@ -131,3 +146,19 @@ Las pruebas automatizadas utilizan H2 en memoria mediante `src/test/resources/ap
 El backend esta preparado para ejecutarse en Railway. El servicio toma el puerto desde la variable `PORT` y la conexion a PostgreSQL desde las variables de entorno de la plataforma.
 
 La aplicacion mantiene separada la configuracion sensible del codigo fuente mediante variables de entorno, especialmente credenciales de base de datos y secreto JWT.
+# SIGEU Backend
+
+API REST para gestión de emergencias urbanas - Pasto.
+
+## Tecnologías
+- Java 17 + Spring Boot
+- PostgreSQL
+
+## Ejecutar
+
+mvn spring-boot:run
+
+## Endpoints principales
+- POST /api/emergencias - Registrar emergencia
+- GET /api/emergencias - Listar emergencias
+- POST /api/emergencias/clasificar - Clasificar tipo de emergencia
